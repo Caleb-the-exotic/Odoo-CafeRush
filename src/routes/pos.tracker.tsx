@@ -13,8 +13,9 @@ import {
   ArrowRight,
   Timer,
   Flame,
+  FileDown,
+  Trash2,
 } from "lucide-react";
-import { Trash2 } from "lucide-react";
 import { currency } from "@/lib/pos/format";
 import { DISH_COOK_SECS } from "@/lib/pos/dishTimings";
 
@@ -96,6 +97,83 @@ function getOrderMaxCookSec(itemIds: string[]): number {
   if (!itemIds.length) return 0;
   return Math.max(...itemIds.map((id) => DISH_COOK_SECS[id] ?? 0));
 }
+
+const downloadCustomerBillPDF = async (order: any) => {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({
+    unit: "mm",
+    format: [80, 195]
+  });
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("CafeRush", 40, 12, { align: "center" });
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("Savor the Spices of India", 40, 16, { align: "center" });
+  doc.text("123 Tech Park, Bangalore", 40, 20, { align: "center" });
+  doc.text("GSTIN: 29AAAAA1111A1Z1", 40, 24, { align: "center" });
+  
+  doc.text("--------------------------------------------------", 40, 28, { align: "center" });
+  
+  doc.setFont("helvetica", "bold");
+  doc.text(`Bill No: #${order.number}`, 8, 33);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Date: ${new Date(order.createdAt).toLocaleString()}`, 8, 37);
+  doc.text(`Channel: ${order.channel || "dine-in"}`, 8, 41);
+  
+  doc.text("--------------------------------------------------", 40, 45, { align: "center" });
+  
+  let y = 50;
+  doc.setFont("helvetica", "bold");
+  doc.text("Item", 8, y);
+  doc.text("Qty", 48, y);
+  doc.text("Total", 64, y);
+  doc.setFont("helvetica", "normal");
+  
+  y += 5;
+  order.lines.forEach((line: any) => {
+    doc.text(line.name.substring(0, 20), 8, y);
+    doc.text(String(line.qty), 48, y);
+    doc.text(`Rs. ${(line.qty * line.unitPrice).toFixed(2)}`, 64, y);
+    y += 5;
+  });
+  
+  doc.text("--------------------------------------------------", 40, y, { align: "center" });
+  y += 4;
+  
+  const itemsTotal = order.lines.reduce((s: number, l: any) => s + l.unitPrice * l.qty, 0);
+  const subtotal = itemsTotal / 1.05;
+  const cgst = subtotal * 0.025;
+  const sgst = subtotal * 0.025;
+  
+  doc.text("Subtotal:", 8, y);
+  doc.text(`Rs. ${subtotal.toFixed(2)}`, 64, y);
+  y += 4;
+  doc.text("CGST (2.5%):", 8, y);
+  doc.text(`Rs. ${cgst.toFixed(2)}`, 64, y);
+  y += 4;
+  doc.text("SGST (2.5%):", 8, y);
+  doc.text(`Rs. ${sgst.toFixed(2)}`, 64, y);
+  y += 5;
+  
+  doc.setFont("helvetica", "bold");
+  doc.text("Grand Total:", 8, y);
+  doc.text(`Rs. ${itemsTotal.toFixed(2)}`, 64, y);
+  
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.text("--------------------------------------------------", 40, y, { align: "center" });
+  y += 5;
+  
+  doc.setFont("helvetica", "italic");
+  doc.text("Thank you for dining with us!", 40, y, { align: "center" });
+  y += 4;
+  doc.text("Visit again!", 40, y, { align: "center" });
+  
+  doc.save(`CafeRush-Receipt-${order.number}.pdf`);
+};
 
 // ── Individual order card with its own countdown ─────────────────────────────
 function OrderCard({
@@ -210,13 +288,22 @@ function OrderCard({
           </div>
         )}
 
-        <div className="text-right shrink-0 ml-2">
-          <div className="text-xs text-muted-foreground">
-            {order.lines.length} item{order.lines.length !== 1 ? "s" : ""}
+        <div className="text-right shrink-0 ml-2 flex items-center gap-2">
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {order.lines.length} item{order.lines.length !== 1 ? "s" : ""}
+            </div>
+            <div className="text-sm font-bold">
+              {currency(order.lines.reduce((s: number, l: any) => s + l.unitPrice * l.qty, 0))}
+            </div>
           </div>
-          <div className="text-sm font-bold">
-            {currency(order.lines.reduce((s: number, l: any) => s + l.unitPrice * l.qty, 0))}
-          </div>
+          <button
+            onClick={() => downloadCustomerBillPDF(order)}
+            className="p-1.5 rounded-lg border hover:bg-secondary text-muted-foreground hover:text-foreground transition-all cursor-pointer shrink-0"
+            title="Download PDF Bill/Receipt"
+          >
+            <FileDown className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -456,12 +543,19 @@ function OrderTrackerPage() {
                       {dismissed.has(order.id) ? "Time up" : "Served"}
                     </span>
                     <button
+                      onClick={() => downloadCustomerBillPDF(order)}
+                      className="ml-1 inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-semibold hover:bg-secondary hover:text-foreground transition shrink-0 cursor-pointer"
+                      title="Download PDF Receipt"
+                    >
+                      <FileDown className="h-3.5 w-3.5" /> Receipt
+                    </button>
+                    <button
                       onClick={() => {
                         if (window.confirm(`Delete order #${order.number}? This removes it for everyone.`)) {
                           deleteOrder(order.id);
                         }
                       }}
-                      className="ml-1 inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 text-red-600 px-2 py-1 text-[11px] font-semibold hover:bg-red-100 transition shrink-0"
+                      className="ml-1 inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 text-red-600 px-2 py-1 text-[11px] font-semibold hover:bg-red-100 transition shrink-0 cursor-pointer"
                       title="Delete this completed order"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> Delete
